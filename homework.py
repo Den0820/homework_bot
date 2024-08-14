@@ -2,7 +2,6 @@ import logging
 from logging import StreamHandler
 import os
 import sys
-from pprint import pprint
 import time
 import requests
 
@@ -19,7 +18,7 @@ from exceptions import (TokensUnavailableException,
 load_dotenv()
 
 
-PRACTICUM_TOKEN =  os.getenv('PRACTICUM_TOKEN')
+PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
@@ -123,14 +122,16 @@ def parse_status(homework):
             homework_name = last_hw['homework_name']
             verdict = HOMEWORK_VERDICTS[last_hw['status']]
             INITIAL_STATUS = {last_hw['homework_name']: last_hw['status']}
-            return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+            return f'''Изменился статус проверки работы "{homework_name}".
+            {verdict}'''
         elif last_hw['status'] == INITIAL_STATUS[last_hw['homework_name']]:
             raise NoUpdatesException(last_hw['status'])
         elif last_hw['status'] != INITIAL_STATUS[last_hw['homework_name']]:
             homework_name = last_hw['homework_name']
             verdict = HOMEWORK_VERDICTS[last_hw['status']]
             INITIAL_STATUS = {last_hw['homework_name']: last_hw['status']}
-            return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+            return f'''Изменился статус проверки работы "{homework_name}".
+            {verdict}'''
 
 
 def main():
