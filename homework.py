@@ -1,8 +1,11 @@
+from contextlib import suppress
+from http import HTTPStatus
 import logging
 from logging import StreamHandler
 import os
 import sys
 import time
+import json
 import requests
 
 from dotenv import load_dotenv
@@ -74,38 +77,39 @@ def send_message(bot, message):
 
 def get_api_answer(timestamp):
     """Делаем запрос к APi и получаем ответ."""
-    from_date = timestamp
+    from_date = timestamp - TIME_DELTA
     payload = {'from_date': from_date}
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=payload)
-    except requests.RequestException as error:
-        return error
-    if response.status_code != 200:
-        raise Exception
-    else:
-        return response.json()
+        if response.status_code != HTTPStatus.OK:
+            raise Exception
+        else:
+            try:
+                return response.json()
+            except json.decoder.JSONDecodeError as error:
+                raise error
+    except requests.RequestException('Something wrong') as error:
+        raise error
 
 
 def check_response(response):
     """Проверяем ответ от API на ожидаемый."""
-    if isinstance(response, dict):
-        if 'code' in response.keys():
-            if response['code'] == 'UnknownError':
-                raise UnexpectedArgException()
-            elif response['code'] == 'not_authenticated':
-                raise TokenError()
-        elif 'homeworks' in response.keys():
-            if isinstance(response['homeworks'], list):
-                if not response['homeworks']:
-                    raise EmptyResponseList
-                else:
-                    return response['homeworks'][0]
-            else:
-                raise TypeError
-        else:
-            raise NoHWDict
-    else:
+    if not isinstance(response, dict):
         raise TypeError
+    if 'code' in response.keys():
+        if response['code'] == 'UnknownError':
+            raise UnexpectedArgException()
+        elif response['code'] == 'not_authenticated':
+            raise TokenError()
+    elif 'homeworks' in response.keys():
+        if not isinstance(response['homeworks'], list):
+            raise TypeError
+        if not response['homeworks']:
+            raise EmptyResponseList
+        else:
+            return response['homeworks'][0]
+    else:
+        raise NoHWDict
 
 
 def parse_status(homework):
@@ -113,25 +117,22 @@ def parse_status(homework):
     global INITIAL_STATUS
     if 'homework_name' not in homework.keys():
         raise NoHWName
-    else:
-        last_hw = homework
-        if last_hw['status'] not in HOMEWORK_VERDICTS.keys():
-            raise UnexpectedStatusError(last_hw['status'])
+    last_hw = homework
+    if last_hw['status'] not in HOMEWORK_VERDICTS.keys():
+        raise UnexpectedStatusError(last_hw['status'])
 
-        if last_hw['homework_name'] not in INITIAL_STATUS.keys():
-            homework_name = last_hw['homework_name']
-            verdict = HOMEWORK_VERDICTS[last_hw['status']]
-            INITIAL_STATUS = {last_hw['homework_name']: last_hw['status']}
-            return f'''Изменился статус проверки работы "{homework_name}".
-            {verdict}'''
-        elif last_hw['status'] == INITIAL_STATUS[last_hw['homework_name']]:
-            raise NoUpdatesException(last_hw['status'])
-        elif last_hw['status'] != INITIAL_STATUS[last_hw['homework_name']]:
-            homework_name = last_hw['homework_name']
-            verdict = HOMEWORK_VERDICTS[last_hw['status']]
-            INITIAL_STATUS = {last_hw['homework_name']: last_hw['status']}
-            return f'''Изменился статус проверки работы "{homework_name}".
-            {verdict}'''
+    if last_hw['homework_name'] not in INITIAL_STATUS.keys():
+        homework_name = last_hw['homework_name']
+        verdict = HOMEWORK_VERDICTS[last_hw['status']]
+        INITIAL_STATUS = {last_hw['homework_name']: last_hw['status']}
+        return f'''Изменился статус проверки работы "{homework_name}".
+        {verdict}'''
+    elif last_hw['status'] != INITIAL_STATUS[last_hw['homework_name']]:
+        homework_name = last_hw['homework_name']
+        verdict = HOMEWORK_VERDICTS[last_hw['status']]
+        INITIAL_STATUS = {last_hw['homework_name']: last_hw['status']}
+        return f'''Изменился статус проверки работы "{homework_name}".
+        {verdict}'''
 
 
 def main():
@@ -148,9 +149,20 @@ def main():
 
             response = check_response(api_answer)
 
+            if response['homework_name'] in INITIAL_STATUS.keys():
+                if response['status'] == INITIAL_STATUS[
+                    response['homework_name']
+                ]:
+                    raise NoUpdatesException(response['status'])
+                    # Обязательно должны логироваться такие события:
+                    # ...
+                    # отсутствие в ответе новых статусов (уровень DEBUG)
+
             status_message = parse_status(response)
 
             send_message(bot, status_message)
+
+            timestamp = api_answer['current_date']
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'

@@ -64,6 +64,7 @@ class NoHWDict(Exception):
         '''
         super().__init__(self.message)
 
+
 class NoHWName(Exception):
     """Exception for no HW name in dict in response."""
 
