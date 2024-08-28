@@ -4,7 +4,7 @@ class TokensUnavailableException(Exception):
     def __init__(self, token_name):
         """Reinitializing message atribute."""
         self.message = f'''
-        {token_name} token is None!
+        {token_name} token(s) is None!
         Make sure that it is identified in local .env file'''
         super().__init__(self.message)
 

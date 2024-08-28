@@ -54,10 +54,15 @@ def check_tokens():
         'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
         'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID
     }
+    token_names = ''
+    counter = 0
     for token_name in tokens.keys():
         if tokens[token_name] is None:
-            logger.critical(TokensUnavailableException(token_name).message)
-            raise TokensUnavailableException(token_name)
+            token_names = token_names + token_name + ';'
+            counter += 1
+    if counter > 0:
+        logger.critical(TokensUnavailableException(token_names).message)
+        raise TokensUnavailableException(token_names)
 
 
 def send_message(bot, message):
@@ -71,7 +76,8 @@ def send_message(bot, message):
     except apihelper.ApiException as error:
         message = f'Сбой в работе программы: {error}'
         logger.error(message)
-        return error
+        raise error
+
 
 
 def get_api_answer(timestamp):
@@ -114,7 +120,10 @@ def check_response(response):
 def parse_status(homework):
     """Соотносим статус с ожидаемыми."""
     global INITIAL_STATUS
-    if 'homework_name' not in homework.keys():
+    if (
+        'homework_name' not in homework.keys()
+        or 'status' not in homework.keys()
+    ):
         raise NoHWName
     last_hw = homework
     if last_hw['status'] not in HOMEWORK_VERDICTS.keys():
@@ -152,30 +161,29 @@ def main():
                 if response['status'] == INITIAL_STATUS[
                     response['homework_name']
                 ]:
-                    raise NoUpdatesException(response['status'])
-                    # Обязательно должны логироваться такие события:
-                    # ...
-                    # отсутствие в ответе новых статусов (уровень DEBUG)
+                    logger.debug(
+                        NoUpdatesException(response['status'])
+                    )
 
             status_message = parse_status(response)
 
             send_message(bot, status_message)
 
-            timestamp = api_answer['current_date']
+            if api_answer['current_date']:
+                timestamp = api_answer['current_date']
+            else:
+                timestamp = int(time.time())
 
         except Exception as error:
-            message = f'Сбой в работе программы: {error}'
-            if isinstance(error, NoUpdatesException):
-                logger.debug(message)
-                send_message(bot, message)
-            elif isinstance(error, EmptyResponseList):
-                logger.debug(message)
-                send_message(bot, message)
+            error_msg = f'Сбой в работе программы: {error}'
+            if isinstance(error, EmptyResponseList):
+                logger.debug(error_msg)
+                send_message(bot, error_msg)
             elif isinstance(error, apihelper.ApiException):
                 pass
             else:
-                logger.error(message)
-                send_message(bot, message)
+                logger.error(error_msg)
+                send_message(bot, error_msg)
 
         time.sleep(RETRY_PERIOD)
 
