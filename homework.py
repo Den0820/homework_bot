@@ -79,7 +79,6 @@ def send_message(bot, message):
         raise error
 
 
-
 def get_api_answer(timestamp):
     """Делаем запрос к APi и получаем ответ."""
     from_date = timestamp - TIME_DELTA
