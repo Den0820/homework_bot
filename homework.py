@@ -165,7 +165,7 @@ def main():
                     )
                     time.sleep(RETRY_PERIOD)
                     continue
-            
+
             status_message = parse_status(response)
 
             send_message(bot, status_message)
