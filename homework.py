@@ -1,3 +1,4 @@
+from contextlib import suppress
 from http import HTTPStatus
 import logging
 from logging import StreamHandler
@@ -28,6 +29,7 @@ RETRY_PERIOD = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 INITIAL_STATUS = {}
+error_msg = ''
 
 HOMEWORK_VERDICTS = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
@@ -55,12 +57,10 @@ def check_tokens():
         'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID
     }
     token_names = ''
-    counter = 0
     for token_name in tokens.keys():
         if tokens[token_name] is None:
             token_names = token_names + token_name + ';'
-            counter += 1
-    if counter > 0:
+    if token_names != '':
         logger.critical(TokensUnavailableException(token_names).message)
         raise TokensUnavailableException(token_names)
 
@@ -76,7 +76,7 @@ def send_message(bot, message):
     except apihelper.ApiException as error:
         message = f'Сбой в работе программы: {error}'
         logger.error(message)
-        raise error
+        pass
 
 
 def get_api_answer(timestamp):
@@ -87,11 +87,10 @@ def get_api_answer(timestamp):
         response = requests.get(ENDPOINT, headers=HEADERS, params=payload)
         if response.status_code != HTTPStatus.OK:
             raise Exception
-        else:
-            try:
-                return response.json()
-            except json.decoder.JSONDecodeError as error:
-                raise error
+        try:
+            return response.json()
+        except json.decoder.JSONDecodeError as error:
+            raise error
     except requests.RequestException('Something wrong') as error:
         raise error
 
@@ -144,6 +143,7 @@ def parse_status(homework):
 
 def main():
     """Основная логика работы бота."""
+    global error_msg
     check_tokens()
 
     bot = TeleBot(token=TELEGRAM_TOKEN)
@@ -163,26 +163,28 @@ def main():
                     logger.debug(
                         NoUpdatesException(response['status'])
                     )
-
+                    time.sleep(RETRY_PERIOD)
+                    continue
+            
             status_message = parse_status(response)
 
             send_message(bot, status_message)
 
-            if api_answer['current_date']:
-                timestamp = api_answer['current_date']
-            else:
-                timestamp = int(time.time())
+            timestamp = api_answer.get('current_date', int(time.time()))
 
         except Exception as error:
-            error_msg = f'Сбой в работе программы: {error}'
-            if isinstance(error, EmptyResponseList):
+            cur_error_msg = f'Сбой в работе программы: {error}'
+            with suppress(NoUpdatesException, EmptyResponseList):
                 logger.debug(error_msg)
-                send_message(bot, error_msg)
-            elif isinstance(error, apihelper.ApiException):
+                if cur_error_msg != error_msg:
+                    send_message(bot, cur_error_msg)
+            if isinstance(error, apihelper.ApiException):
                 pass
             else:
                 logger.error(error_msg)
-                send_message(bot, error_msg)
+                if cur_error_msg != error_msg:
+                    send_message(bot, cur_error_msg)
+            error_msg = cur_error_msg
 
         time.sleep(RETRY_PERIOD)
 
