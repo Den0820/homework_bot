@@ -74,9 +74,7 @@ def send_message(bot, message):
         )
         logger.debug('Message was sent successfully.')
     except apihelper.ApiException as error:
-        message = f'Сбой в работе программы: {error}'
-        logger.error(message)
-        pass
+        raise error
 
 
 def get_api_answer(timestamp):
@@ -108,6 +106,7 @@ def check_response(response):
         if not isinstance(response['homeworks'], list):
             raise TypeError
         if not response['homeworks']:
+            logger.debug(EmptyResponseList())
             raise EmptyResponseList
         else:
             return response['homeworks'][0]
@@ -163,7 +162,6 @@ def main():
                     logger.debug(
                         NoUpdatesException(response['status'])
                     )
-                    time.sleep(RETRY_PERIOD)
                     continue
 
             status_message = parse_status(response)
@@ -174,19 +172,14 @@ def main():
 
         except Exception as error:
             cur_error_msg = f'Сбой в работе программы: {error}'
-            with suppress(NoUpdatesException, EmptyResponseList):
-                logger.debug(error_msg)
+            with suppress(apihelper.ApiException):
+                logger.error(cur_error_msg)
                 if cur_error_msg != error_msg:
                     send_message(bot, cur_error_msg)
-            if isinstance(error, apihelper.ApiException):
-                pass
-            else:
-                logger.error(error_msg)
-                if cur_error_msg != error_msg:
-                    send_message(bot, cur_error_msg)
-            error_msg = cur_error_msg
+                error_msg = cur_error_msg
 
-        time.sleep(RETRY_PERIOD)
+        finally:
+            time.sleep(RETRY_PERIOD)
 
 
 if __name__ == '__main__':
